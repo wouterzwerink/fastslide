@@ -57,9 +57,24 @@ class NdpiTiffTileExecutor : public CachedTileExecutor<NdpiTiffTileExecutor> {
   static TileKey MakeCacheKey(const core::TileReadOp& op,
                               const NdpiTiffExecContext& context);
 
+  /// @brief Columns of a JPEG strip to decode instead of the whole strip.
+  struct ColumnCrop {
+    /// First requested column.
+    uint32_t x = 0;
+    /// Number of requested columns.
+    uint32_t width = 0;
+    /// Set to the first decoded column (the range is widened to iMCU
+    /// boundaries).
+    uint32_t decoded_x = 0;
+  };
+
   /// @brief Read+decode a single tile/strip on cache miss (CRTP hook).
+  /// @param crop If set, decode only these columns of a headerless NDPI JPEG
+  ///        strip; the result is then not the full strip and must not be
+  ///        cached. Other storage ignores it and leaves `decoded_x` at 0.
   static aifocore::Result<DecodedTileData> ReadTileFromDisk(
-      const core::TileReadOp& op, const NdpiTiffExecContext& context);
+      const core::TileReadOp& op, const NdpiTiffExecContext& context,
+      ColumnCrop* crop = nullptr);
 };
 
 }  // namespace fastslide

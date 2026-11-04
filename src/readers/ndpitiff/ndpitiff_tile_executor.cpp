@@ -75,6 +75,26 @@ aifocore::Status NdpiTiffTileExecutor::ExecutePlan(
 aifocore::Status NdpiTiffTileExecutor::ExecuteTileOperation(
     const core::TileReadOp& op, const NdpiTiffExecContext& context,
     runtime::Canvas& writer, std::mutex& writer_mutex) {
+  // NDPI JPEG strips are much wider than a typical read. When decoded tiles
+  // are not cached, decode only the columns this op paints; with a cache the
+  // whole strip is decoded so it can be reused.
+  const auto& src = op.transform.source;
+  const bool use_cache = !IsCacheBypassEnabled() && context.IsCacheEnabled();
+  if (!use_cache && !op.transform.NeedsScaling() && src.x >= 0.0 &&
+      src.width > 0 &&
+      src.x == static_cast<double>(static_cast<uint32_t>(src.x))) {
+    ColumnCrop crop{.x = static_cast<uint32_t>(src.x), .width = src.width};
+    auto decoded_or = ReadTileFromDisk(op, context, &crop);
+    if (!decoded_or.ok()) {
+      return decoded_or.status();
+    }
+    core::TileReadOp cropped_op = op;
+    cropped_op.transform.source.x -= static_cast<double>(crop.decoded_x);
+    return readers::simpletiff_exec::PaintTileMaybeLocked(
+        writer, cropped_op, decoded_or->data, decoded_or->width,
+        decoded_or->height, decoded_or->channels, writer_mutex);
+  }
+
   auto decoded_or = ReadWithCacheDecoded(op, context);
   if (!decoded_or.ok()) {
     return decoded_or.status();
@@ -98,7 +118,8 @@ TileKey NdpiTiffTileExecutor::MakeCacheKey(const core::TileReadOp& op,
 }
 
 aifocore::Result<DecodedTileData> NdpiTiffTileExecutor::ReadTileFromDisk(
-    const core::TileReadOp& op, const NdpiTiffExecContext& context) {
+    const core::TileReadOp& op, const NdpiTiffExecContext& context,
+    ColumnCrop* crop) {
   const auto& tiff_index = context.GetTiffIndex();
   if (op.source_id >= tiff_index.NumPages()) {
     return AIFOCORE_MAKE_STATUS(
@@ -231,6 +252,9 @@ aifocore::Result<DecodedTileData> NdpiTiffTileExecutor::ReadTileFromDisk(
   const simpletiff::JpegDecodeOptions jpeg_options = {
       // If Photometric is YCbCr (6), let the JPEG decoder convert to RGB.
       .treat_ycbcr_as_rgb = (page_header.photometric != kPhotometricYCbCr),
+      .crop_x = crop != nullptr ? crop->x : 0,
+      .crop_width = crop != nullptr ? crop->width : 0,
+      .out_crop_x = crop != nullptr ? &crop->decoded_x : nullptr,
   };
 
   int decoded_w = 0;
