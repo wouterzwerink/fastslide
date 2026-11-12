@@ -49,7 +49,7 @@ aifocore::Status PreadBytes(FileReader& file, uint64_t offset, uint32_t n_bytes,
 }
 
 aifocore::Result<runtime::decoders::DecodedRgb> DecodeTileBytes(
-    std::span<const uint8_t> bytes, TileCodec declared) {
+    std::span<const uint8_t> bytes, TileCodec declared, JpegDecodeMode mode) {
   TileCodec codec =
       SniffCodec(bytes.subspan(0, std::min<size_t>(bytes.size(), 16)));
   if (codec == TileCodec::kUnknown) {
@@ -57,7 +57,7 @@ aifocore::Result<runtime::decoders::DecodedRgb> DecodeTileBytes(
   }
   switch (codec) {
     case TileCodec::kJpeg:
-      return runtime::decoders::DecodeJpegToRgb(bytes);
+      return runtime::decoders::DecodeJpegToRgb(bytes, {.mode = mode});
     case TileCodec::kJp2:
       return runtime::decoders::DecodeJ2kToRgb(bytes);
     case TileCodec::kUnknown:
@@ -138,7 +138,8 @@ aifocore::Status OlympusVsiTileExecutor::ExecutePlan(
         runtime::TileKey key(
             ets_path_str, static_cast<uint16_t>(level_index),
             static_cast<uint32_t>(op.byte_offset & 0xFFFFFFFFU),
-            static_cast<uint32_t>(op.byte_offset >> 32));
+            static_cast<uint32_t>(op.byte_offset >> 32),
+            context.GetJpegDecodeMode());
         std::shared_ptr<runtime::CachedTileData> cached;
         if (cache) {
           cached = cache->Get(key);
@@ -204,7 +205,8 @@ aifocore::Status OlympusVsiTileExecutor::ExecutePlan(
         } else if (!is_16bit) {
           AIFOCORE_ASSIGN_OR_RETURN(
               auto decoded,
-              DecodeTileBytes(compressed_span, context.declared_codec));
+              DecodeTileBytes(compressed_span, context.declared_codec,
+                              context.GetJpegDecodeMode()));
           tile_w = decoded.width;
           tile_h = decoded.height;
           tile_channels = 3U;

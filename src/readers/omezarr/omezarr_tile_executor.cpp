@@ -281,8 +281,10 @@ aifocore::Status OmeZarrTileExecutor::ExecutePlan(
         // level, which is more than sufficient for any realistic dataset.
         const uint32_t encoded_y = (static_cast<uint32_t>(cc) << 16) |
                                    (static_cast<uint32_t>(cy) & 0xFFFFU);
+        // OME-Zarr chunks are not JPEG: one entry for both modes.
         runtime::TileKey key(filename, static_cast<uint16_t>(level_index),
-                             static_cast<uint32_t>(cx), encoded_y);
+                             static_cast<uint32_t>(cx), encoded_y,
+                             JpegDecodeMode::kFast);
 
         DecodedChunk chunk;
         std::shared_ptr<runtime::CachedTileData> cached_full_chunk;
