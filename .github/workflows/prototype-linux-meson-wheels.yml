@@ -1,0 +1,76 @@
+# TEMPORARY prototype, not for upstream: builds only the Linux wheels the way
+# release.yml now does (Meson + cibuildwheel) and checks them, on push to this
+# branch. Delete before opening a PR.
+name: Prototype Linux Meson wheels
+on:
+  push:
+    branches: [build/linux-meson-wheels]
+permissions:
+  contents: read
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+jobs:
+  wheels:
+    name: Linux wheels ${{ matrix.cibw_arch }}
+    runs-on: ${{ matrix.builder }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - builder: ubuntu-24.04
+            cibw_arch: x86_64
+          - builder: ubuntu-24.04-arm
+            cibw_arch: aarch64
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build cp311 wheel
+        uses: pypa/cibuildwheel@v3.2.0
+        with:
+          package-dir: .
+          output-dir: artifacts/wheels
+        env:
+          CIBW_BUILD: "cp311-*"
+          CIBW_BUILD_VERBOSITY: "1"
+          CIBW_ARCHS_LINUX: ${{ matrix.cibw_arch }}
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_BEFORE_ALL_LINUX: "if [ \"$(uname -m)\" = x86_64 ]; then dnf install -y nasm; fi"
+          CIBW_CONFIG_SETTINGS_LINUX: "setup-args=-Dlibjpeg-turbo:simd=enabled"
+      - name: Build cp312-abi3 wheel
+        uses: pypa/cibuildwheel@v3.2.0
+        with:
+          package-dir: .
+          output-dir: artifacts/wheels
+        env:
+          CIBW_BUILD: "cp312-*"
+          CIBW_BUILD_VERBOSITY: "1"
+          CIBW_ARCHS_LINUX: ${{ matrix.cibw_arch }}
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_BEFORE_ALL_LINUX: "if [ \"$(uname -m)\" = x86_64 ]; then dnf install -y nasm; fi"
+          CIBW_CONFIG_SETTINGS_LINUX: "setup-args=-Dlibjpeg-turbo:simd=enabled setup-args=-Dpython.allow_limited_api=true"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la artifacts/wheels
+          whl=$(ls artifacts/wheels/*cp312-abi3*.whl)
+          python -m pip install "$whl" numpy
+          so=$(python -c "import fastslide, pathlib; print(next(pathlib.Path(fastslide.__file__).parent.glob('_fastslide*.so')))")
+          python - <<'EOF'
+          import fastslide
+          s = fastslide.FastSlide.from_file_path("tests/test_data/CMU-1-Small-Region.svs")
+          a = s.read_region((0, 0), 0, (512, 512)).numpy()
+          print("fastslide", fastslide.__version__, "read", a.shape, a.dtype, "mean", float(a.mean()))
+          EOF
+          if [ "$(uname -m)" = x86_64 ]; then
+            n=$(objdump -d --no-show-raw-insn "$so" | grep -c ymm || true)
+            echo "AVX2 (ymm) instructions: $n"
+            test "$n" -gt 3000
+          fi
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-linux-${{ matrix.cibw_arch }}
+          path: artifacts/wheels/*.whl
+          retention-days: 7
