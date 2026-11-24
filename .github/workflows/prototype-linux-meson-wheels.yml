@@ -34,6 +34,9 @@ jobs:
           CIBW_ARCHS_LINUX: ${{ matrix.cibw_arch }}
           CIBW_SKIP: "*-musllinux_*"
           CIBW_BEFORE_ALL_LINUX: "if [ \"$(uname -m)\" = x86_64 ]; then dnf install -y nasm; fi"
+          # gcc 14 (manylinux_2_28) turns these into errors; the vendored jxrlib
+          # relies on them being warnings.
+          CIBW_ENVIRONMENT_LINUX: CFLAGS="-Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=implicit-function-declaration"
           CIBW_CONFIG_SETTINGS_LINUX: "setup-args=-Dlibjpeg-turbo:simd=enabled"
       - name: Build cp312-abi3 wheel
         uses: pypa/cibuildwheel@v3.2.0
@@ -46,6 +49,9 @@ jobs:
           CIBW_ARCHS_LINUX: ${{ matrix.cibw_arch }}
           CIBW_SKIP: "*-musllinux_*"
           CIBW_BEFORE_ALL_LINUX: "if [ \"$(uname -m)\" = x86_64 ]; then dnf install -y nasm; fi"
+          # gcc 14 (manylinux_2_28) turns these into errors; the vendored jxrlib
+          # relies on them being warnings.
+          CIBW_ENVIRONMENT_LINUX: CFLAGS="-Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=implicit-function-declaration"
           CIBW_CONFIG_SETTINGS_LINUX: "setup-args=-Dlibjpeg-turbo:simd=enabled setup-args=-Dpython.allow_limited_api=true"
       - uses: actions/setup-python@v5
         with:

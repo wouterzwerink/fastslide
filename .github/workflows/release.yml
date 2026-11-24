@@ -384,6 +384,9 @@ jobs:
           # NASM for libjpeg-turbo's x86_64 SIMD kernels; `simd=enabled` makes a
           # missing assembler fail the build instead of silently dropping SIMD.
           CIBW_BEFORE_ALL_LINUX: "if [ \"$(uname -m)\" = x86_64 ]; then dnf install -y nasm; fi"
+          # gcc 14 (manylinux_2_28) turns these into errors; the vendored jxrlib
+          # relies on them being warnings.
+          CIBW_ENVIRONMENT_LINUX: CFLAGS="-Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=implicit-function-declaration"
           CIBW_CONFIG_SETTINGS_LINUX: "setup-args=-Dlibjpeg-turbo:simd=enabled"
       - name: Build cp312-abi3 wheel (${{ matrix.platform }})
         if: steps.gate.outputs.run == 'true' && matrix.method == 'meson'
@@ -403,6 +406,9 @@ jobs:
           CIBW_ARCHS_LINUX: ${{ matrix.cibw_arch }}
           CIBW_SKIP: "*-musllinux_*"
           CIBW_BEFORE_ALL_LINUX: "if [ \"$(uname -m)\" = x86_64 ]; then dnf install -y nasm; fi"
+          # gcc 14 (manylinux_2_28) turns these into errors; the vendored jxrlib
+          # relies on them being warnings.
+          CIBW_ENVIRONMENT_LINUX: CFLAGS="-Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=implicit-function-declaration"
           CIBW_CONFIG_SETTINGS_LINUX: "setup-args=-Dlibjpeg-turbo:simd=enabled setup-args=-Dpython.allow_limited_api=true"
       - name: Upload wheels
         if: steps.gate.outputs.run == 'true'
